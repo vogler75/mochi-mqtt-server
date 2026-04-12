@@ -1489,6 +1489,20 @@ func TestServerBuildAckPahoCompatibility(t *testing.T) {
 	require.Equal(t, packets.Properties{}, ack.Properties)
 }
 
+func TestServerProcessPublishQoS1AckReasonCode(t *testing.T) {
+	s := newServer()
+	cl, _, _ := newTestClient()
+
+	pk := *packets.TPacketData[packets.Publish].Get(packets.TPublishQos1).Packet
+	err := s.processPublish(cl, pk)
+	require.NoError(t, err)
+
+	ack, ok := cl.State.Inflight.Get(pk.PacketID)
+	require.True(t, ok)
+	require.Equal(t, packets.Puback, ack.FixedHeader.Type)
+	require.Equal(t, packets.CodeSuccess.Code, ack.ReasonCode)
+}
+
 func TestServerProcessPacketAndNextImmediate(t *testing.T) {
 	s := newServer()
 	cl, r, w := newTestClient()
