@@ -1761,9 +1761,9 @@ func TestServerProcessPublishACLCheckDeny(t *testing.T) {
 				require.Equal(t, tx.expectReponse, buf)
 			}
 
-			require.Equal(t, tx.expectDisconnect, cl.Closed())
 			wg.Wait()
 			require.ErrorIs(t, <-errCh, tx.expectErr)
+			require.Equal(t, tx.expectDisconnect, cl.Closed())
 		})
 	}
 }
