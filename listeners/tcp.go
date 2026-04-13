@@ -84,7 +84,7 @@ func (l *TCP) Serve(establish EstablishFn) {
 		if atomic.LoadUint32(&l.end) == 0 {
 			go func() {
 				err = establish(l.id, conn)
-				if err != nil && err != io.EOF {
+				if err != nil && errors.Is(err, io.EOF) {
 					l.log.Warn("", "error", err)
 				}
 			}()
