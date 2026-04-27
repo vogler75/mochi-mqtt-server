@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/mochi-mqtt/server/v2/packets"
+	"github.com/vogler75/mochi-mqtt-server/v2/packets"
 	"github.com/stretchr/testify/require"
 )
 

@@ -13,10 +13,10 @@ import (
 	"syscall"
 	"time"
 
-	mqtt "github.com/mochi-mqtt/server/v2"
-	"github.com/mochi-mqtt/server/v2/hooks/auth"
-	"github.com/mochi-mqtt/server/v2/listeners"
-	"github.com/mochi-mqtt/server/v2/packets"
+	mqtt "github.com/vogler75/mochi-mqtt-server/v2"
+	"github.com/vogler75/mochi-mqtt-server/v2/hooks/auth"
+	"github.com/vogler75/mochi-mqtt-server/v2/listeners"
+	"github.com/vogler75/mochi-mqtt-server/v2/packets"
 )
 
 func main() {
