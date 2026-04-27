@@ -2,15 +2,12 @@
 
 <p align="center">
     
-![build status](https://github.com/mochi-mqtt/server/actions/workflows/build.yml/badge.svg) 
 [![Coverage Status](https://coveralls.io/repos/github/mochi-mqtt/server/badge.svg?branch=master&v2)](https://coveralls.io/github/mochi-mqtt/server?branch=master)
 [![Go Report Card](https://goreportcard.com/badge/github.com/mochi-mqtt/server)](https://goreportcard.com/report/github.com/mochi-mqtt/server/v2)
 [![Go Reference](https://pkg.go.dev/badge/github.com/mochi-mqtt/server.svg)](https://pkg.go.dev/github.com/mochi-mqtt/server/v2)
 [![contributions welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg?style=flat)](https://github.com/mochi-mqtt/server/issues)
 
 </p>
-
-[English](README.md) | [简体中文](README-CN.md) | [日本語](README-JP.md) | [Translators Wanted!](https://github.com/orgs/mochi-mqtt/discussions/310)
 
 🎆 **mochi-co/mqtt is now part of the new mochi-mqtt organisation.** [Read about this announcement here.](https://github.com/orgs/mochi-mqtt/discussions/271)
 
@@ -70,26 +67,8 @@ cd cmd
 go build -o mqtt && ./mqtt
 ```
 
-### Using Docker
-You can now pull and run the [official Mochi MQTT image](https://hub.docker.com/r/mochimqtt/server) from our Docker repo:
-
-```sh
-docker pull mochimqtt/server
-or
-docker run -v $(pwd)/config.yaml:/config.yaml mochimqtt/server 
-```
-
-For most use cases, you can use File Based Configuration to configure the server, by specifying a valid `yaml` or `json` config file.
-
-A simple Dockerfile is provided for running the [cmd/main.go](cmd/main.go) Websocket, TCP, and Stats server, using the `allow-all` auth hook. 
-
-```sh
-docker build -t mochi:latest .
-docker run -p 1883:1883 -p 1882:1882 -p 8080:8080 -v $(pwd)/config.yaml:/config.yaml mochi:latest
-```
-
 ### File Based Configuration
-You can use File Based Configuration with either the Docker image (described above), or by running the build binary with the `--config=config.yaml` or `--config=config.json` parameter.
+You can use File Based Configuration by running the build binary with the `--config=config.yaml` or `--config=config.json` parameter.
 
 Configuration files provide a convenient mechanism for easily preparing a server with the most common configurations. You can enable and configure built-in hooks and listeners, and specify server options and compatibilities:
 
@@ -111,7 +90,7 @@ options:
   inline_client: true
 ```
 
-Please review the examples found in [examples/config](examples/config) for all available configuration options.
+For all available configuration options, review the config struct in [config/config.go](config/config.go).
 
 There are a few conditions to note:
 1. If you use file-based configuration, the supported hook types for configuration are currently limited to auth, storage, and debug. Each type of hook can only have one instance.
@@ -170,7 +149,7 @@ func main() {
 }
 ```
 
-Examples of running the broker with various configurations can be found in the [examples](examples) folder. 
+ 
 
 #### Network Listeners
 The server comes with a variety of pre-packaged network listeners which allow the broker to accept connections on different protocols. The current listeners are:
@@ -188,7 +167,7 @@ The server comes with a variety of pre-packaged network listeners which allow th
 
 A `*listeners.Config` may be passed to configure TLS. 
 
-Examples of usage can be found in the [examples](examples) folder or [cmd/main.go](cmd/main.go).
+For usage examples, see [cmd/main.go](cmd/main.go).
 
 
 ## Server Options and Capabilities
@@ -305,7 +284,7 @@ err := server.AddHook(new(auth.Hook), &auth.Options{
     Data: data, // build ledger from byte slice: yaml or json
 })
 ```
-See [examples/auth/encoded/main.go](examples/auth/encoded/main.go) for more information.
+See the auth ledger struct in [hooks/auth/ledger.go](hooks/auth/ledger.go) for more information.
 
 ### Persistent Storage 
 #### Redis
@@ -322,7 +301,7 @@ if err != nil {
   log.Fatal(err)
 }
 ```
-For more information on how the redis hook works, or how to use it, see the [examples/persistence/redis/main.go](examples/persistence/redis/main.go) or [hooks/storage/redis](hooks/storage/redis) code.
+For more information on how the redis hook works, see [hooks/storage/redis](hooks/storage/redis).
 
 #### Pebble DB
 There's also a Pebble Db storage hook if you prefer file-based storage. It can be added and configured in much the same way as the other hooks (with somewhat less options).
@@ -335,7 +314,7 @@ if err != nil {
   log.Fatal(err)
 }
 ```
-For more information on how the pebble hook works, or how to use it, see the [examples/persistence/pebble/main.go](examples/persistence/pebble/main.go) or [hooks/storage/pebble](hooks/storage/pebble) code.
+For more information on how the pebble hook works, see [hooks/storage/pebble](hooks/storage/pebble).
 
 #### Badger DB
 Similarly, for file-based storage, there is also a BadgerDB storage hook available. It can be added and configured in much the same way as the other hooks.
@@ -347,9 +326,9 @@ if err != nil {
   log.Fatal(err)
 }
 ```
-For more information on how the badger hook works, or how to use it, see the [examples/persistence/badger/main.go](examples/persistence/badger/main.go) or [hooks/storage/badger](hooks/storage/badger) code.
+For more information on how the badger hook works, see [hooks/storage/badger](hooks/storage/badger).
 
-There is also a BoltDB hook which has been deprecated in favour of Badger, but if you need it, check [examples/persistence/bolt/main.go](examples/persistence/bolt/main.go).
+There is also a BoltDB hook which has been deprecated in favour of Badger. See [hooks/storage/bolt](hooks/storage/bolt) if you need it.
 
 ## Developing with Event Hooks
 Many hooks are available for interacting with the broker and client lifecycle. 
@@ -408,7 +387,6 @@ server := mqtt.New(&mqtt.Options{
 ```
 Once enabled, you will be able to use the `server.Publish`, `server.Subscribe`, and `server.Unsubscribe` methods to issue and received messages from broker-adjacent code.
 
-> See [direct examples](examples/direct/main.go) for real-life usage examples.
 
 #### Inline Publish
 To publish basic message to a topic from within the embedding application, you can use the `server.Publish(topic string, payload []byte, retain bool, qos byte) error` method.
@@ -455,7 +433,6 @@ server.InjectPacket(cl, packets.Packet{
 
 > MQTT packets still need to be correctly formed, so refer our [the test packets catalogue](packets/tpackets.go) and [MQTTv5 Specification](https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html) for inspiration.
 
-See the [hooks example](examples/hooks/main.go) to see this feature in action.
 
 
 ### Testing
@@ -466,9 +443,7 @@ go run --cover ./...
 ```
 
 #### Paho Interoperability Test
-You can check the broker against the [Paho Interoperability Test](https://github.com/eclipse/paho.mqtt.testing/tree/master/interoperability) by starting the broker using `examples/paho/main.go`, and then running the mqtt v5 and v3 tests with `python3 client_test5.py` from the _interoperability_ folder. 
-
-> Note that there are currently a number of outstanding issues regarding false negatives in the paho suite, and as such, certain compatibility modes are enabled in the `paho/main.go` example.
+You can check the broker against the [Paho Interoperability Test](https://github.com/eclipse/paho.mqtt.testing/tree/master/interoperability) by starting the broker with your preferred configuration and running the mqtt v5 and v3 tests.
 
 
 ## Performance Benchmarks
