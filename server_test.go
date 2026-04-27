@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"os"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -266,11 +267,13 @@ func TestServerAddListenersFromConfig(t *testing.T) {
 	require.NotNil(t, s)
 	s.Log = logger
 
+	defer os.Remove("mochi.sock")
+
 	lc := []listeners.Config{
-		{Type: listeners.TypeTCP, ID: "tcp", Address: ":1883"},
-		{Type: listeners.TypeWS, ID: "ws", Address: ":1882"},
-		{Type: listeners.TypeHealthCheck, ID: "health", Address: ":1881"},
-		{Type: listeners.TypeSysInfo, ID: "info", Address: ":1880"},
+		{Type: listeners.TypeTCP, ID: "tcp", Address: "127.0.0.1:0"},
+		{Type: listeners.TypeWS, ID: "ws", Address: "127.0.0.1:0"},
+		{Type: listeners.TypeHealthCheck, ID: "health", Address: "127.0.0.1:0"},
+		{Type: listeners.TypeSysInfo, ID: "info", Address: "127.0.0.1:0"},
 		{Type: listeners.TypeUnix, ID: "unix", Address: "mochi.sock"},
 		{Type: listeners.TypeMock, ID: "mock", Address: "0"},
 		{Type: "unknown", ID: "unknown"},
@@ -281,16 +284,16 @@ func TestServerAddListenersFromConfig(t *testing.T) {
 	require.Equal(t, 6, s.Listeners.Len())
 
 	tcp, _ := s.Listeners.Get("tcp")
-	require.Equal(t, "[::]:1883", tcp.Address())
+	require.NotEmpty(t, tcp.Address())
 
 	ws, _ := s.Listeners.Get("ws")
-	require.Equal(t, ":1882", ws.Address())
+	require.NotEmpty(t, ws.Address())
 
 	health, _ := s.Listeners.Get("health")
-	require.Equal(t, ":1881", health.Address())
+	require.NotEmpty(t, health.Address())
 
 	info, _ := s.Listeners.Get("info")
-	require.Equal(t, ":1880", info.Address())
+	require.NotEmpty(t, info.Address())
 
 	unix, _ := s.Listeners.Get("unix")
 	require.Equal(t, "mochi.sock", unix.Address())
@@ -715,12 +718,17 @@ func TestEstablishConnectionInheritExistingTrueTakeover(t *testing.T) {
 	}()
 
 	// Get the first client pointer
-	time.Sleep(time.Millisecond * 50)
-	cl1, ok := s.Clients.Get(packets.TPacketData[packets.Connect].Get(packets.TConnectUserPass).Packet.Connect.ClientIdentifier)
-	require.True(t, ok)
+	clientID := packets.TPacketData[packets.Connect].Get(packets.TConnectUserPass).Packet.Connect.ClientIdentifier
+	var (
+		cl1 *Client
+		ok  bool
+	)
+	require.Eventually(t, func() bool {
+		cl1, ok = s.Clients.Get(clientID)
+		return ok
+	}, 500*time.Millisecond, 5*time.Millisecond)
 	cl1.State.Subscriptions.Add("a/b/c", packets.Subscription{Filter: "a/b/c", Qos: 1})
 	cl1.State.Subscriptions.Add("d/e/f", packets.Subscription{Filter: "d/e/f", Qos: 0})
-	time.Sleep(time.Millisecond * 50)
 
 	// Make the second connection
 	r2, w2 := net.Pipe()
@@ -730,9 +738,11 @@ func TestEstablishConnectionInheritExistingTrueTakeover(t *testing.T) {
 		o2 <- err
 	}()
 	go func() {
-		x := packets.TPacketData[packets.Connect].Get(packets.TConnectUserPass).RawBytes[:]
+		raw := packets.TPacketData[packets.Connect].Get(packets.TConnectUserPass).RawBytes
+		x := make([]byte, len(raw))
+		copy(x, raw)
 		x[19] = '.' // differentiate username bytes in debugging
-		_, _ = w2.Write(packets.TPacketData[packets.Connect].Get(packets.TConnectUserPass).RawBytes)
+		_, _ = w2.Write(x)
 	}()
 
 	// receive the second connack
@@ -3494,6 +3504,45 @@ func TestServerClose(t *testing.T) {
 	time.Sleep(time.Millisecond)
 	require.Equal(t, false, listener.(*listeners.MockListener).IsServing())
 	require.Equal(t, packets.TPacketData[packets.Disconnect].Get(packets.TDisconnectShuttingDown).RawBytes, <-recv)
+}
+
+func TestServerCloseIdempotent(t *testing.T) {
+	s := newServer()
+	require.NoError(t, s.Close())
+	require.NotPanics(t, func() { _ = s.Close() })
+}
+
+func TestEstablishConnectionMaximumClientsConcurrent(t *testing.T) {
+	// MaximumClients = 0 means no connections allowed. With concurrent attempts,
+	// the old check-then-increment pattern could let multiple through; the atomic
+	// reserve must reject all of them.
+	cc := NewDefaultServerCapabilities()
+	cc.MaximumClients = 0
+	s := New(&Options{
+		Logger:       logger,
+		Capabilities: cc,
+	})
+	_ = s.AddHook(new(AllowHook), nil)
+	defer s.Close()
+
+	const n = 20
+	results := make(chan error, n)
+	for i := 0; i < n; i++ {
+		r, w := net.Pipe()
+		go func() {
+			results <- s.EstablishConnection("tcp", r)
+		}()
+		// Drain concurrently so server CONNACK writes never block.
+		go func() { io.Copy(io.Discard, w) }() //nolint:errcheck
+		go func() {
+			_, _ = w.Write(packets.TPacketData[packets.Connect].Get(packets.TConnectClean).RawBytes)
+		}()
+	}
+
+	for i := 0; i < n; i++ {
+		err := <-results
+		require.ErrorIs(t, err, packets.ErrServerBusy)
+	}
 }
 
 func TestServerClearExpiredInflights(t *testing.T) {

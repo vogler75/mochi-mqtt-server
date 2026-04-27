@@ -41,15 +41,25 @@ type Websocket struct { // [MQTT-4.2.0-1]
 
 // NewWebsocket initializes and returns a new Websocket listener, listening on an address.
 func NewWebsocket(config Config) *Websocket {
+	checkOrigin := func(r *http.Request) bool { return true }
+	if len(config.AllowedOrigins) > 0 {
+		allowed := make(map[string]struct{}, len(config.AllowedOrigins))
+		for _, o := range config.AllowedOrigins {
+			allowed[o] = struct{}{}
+		}
+		checkOrigin = func(r *http.Request) bool {
+			_, ok := allowed[r.Header.Get("Origin")]
+			return ok
+		}
+	}
+
 	return &Websocket{
 		id:      config.ID,
 		address: config.Address,
 		config:  config,
 		upgrader: &websocket.Upgrader{
 			Subprotocols: []string{"mqtt"},
-			CheckOrigin: func(r *http.Request) bool {
-				return true
-			},
+			CheckOrigin:  checkOrigin,
 		},
 	}
 }

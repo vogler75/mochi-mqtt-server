@@ -19,6 +19,9 @@ type Config struct {
 	Address string
 	// TLSConfig is a tls.Config configuration to be used with the listener. See examples folder for basic and mutual-tls use.
 	TLSConfig *tls.Config
+	// AllowedOrigins is an optional list of allowed WebSocket origins. When nil or empty,
+	// all origins are accepted (permissive default). Only applies to Websocket listeners.
+	AllowedOrigins []string `yaml:"allowed_origins" json:"allowed_origins"`
 }
 
 // EstablishFn is a callback function for establishing new clients.

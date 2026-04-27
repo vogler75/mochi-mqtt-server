@@ -131,6 +131,40 @@ func TestClientsGetByListener(t *testing.T) {
 	require.Equal(t, "tcp1", clients[0].Net.Listener)
 }
 
+func TestClientsGetByListenerNoDeadlockUnderWriterContention(t *testing.T) {
+	// Regression: GetByListener previously called cl.Len() while holding RLock,
+	// which re-acquires RLock and can deadlock when a writer is waiting.
+	cl := NewClients()
+	for i := 0; i < 10; i++ {
+		cl.Add(&Client{
+			ID:    "c" + strings.Repeat("x", i),
+			State: ClientState{open: context.Background()},
+			Net:   ClientConnection{Listener: "tcp1"},
+		})
+	}
+
+	done := make(chan struct{})
+	go func() {
+		// Continuously write to create writer contention
+		for {
+			select {
+			case <-done:
+				return
+			default:
+				cl.Lock()
+				cl.Unlock()
+			}
+		}
+	}()
+
+	// Must not deadlock; run many iterations under the writer goroutine
+	for i := 0; i < 200; i++ {
+		clients := cl.GetByListener("tcp1")
+		require.NotEmpty(t, clients)
+	}
+	close(done)
+}
+
 func TestNewClient(t *testing.T) {
 	cl, _, _ := newTestClient()
 

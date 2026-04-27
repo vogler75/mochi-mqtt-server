@@ -131,6 +131,47 @@ func TestWebsocketUpgrade(t *testing.T) {
 	_ = ws.Close()
 }
 
+func TestWebsocketAllowedOrigin(t *testing.T) {
+	cfg := basicConfig
+	cfg.AllowedOrigins = []string{"http://allowed.example.com"}
+	l := NewWebsocket(cfg)
+	_ = l.Init(logger)
+
+	e := make(chan bool, 1)
+	l.establish = func(id string, c net.Conn) error {
+		e <- true
+		return nil
+	}
+
+	s := httptest.NewServer(http.HandlerFunc(l.handler))
+	defer s.Close()
+
+	dialer := websocket.Dialer{}
+	header := http.Header{"Origin": {"http://allowed.example.com"}}
+	ws, _, err := dialer.Dial("ws"+strings.TrimPrefix(s.URL, "http"), header)
+	require.NoError(t, err)
+	require.True(t, <-e)
+	_ = ws.Close()
+}
+
+func TestWebsocketDeniedOrigin(t *testing.T) {
+	cfg := basicConfig
+	cfg.AllowedOrigins = []string{"http://allowed.example.com"}
+	l := NewWebsocket(cfg)
+	_ = l.Init(logger)
+
+	l.establish = func(id string, c net.Conn) error { return nil }
+
+	s := httptest.NewServer(http.HandlerFunc(l.handler))
+	defer s.Close()
+
+	dialer := websocket.Dialer{}
+	header := http.Header{"Origin": {"http://evil.example.com"}}
+	_, resp, err := dialer.Dial("ws"+strings.TrimPrefix(s.URL, "http"), header)
+	require.Error(t, err)
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+}
+
 func TestWebsocketConnectionReads(t *testing.T) {
 	l := NewWebsocket(basicConfig)
 	_ = l.Init(nil)

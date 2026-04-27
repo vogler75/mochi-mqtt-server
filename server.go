@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -141,6 +142,7 @@ type Server struct {
 	Info         *system.Info         // values about the server commonly known as $SYS topics
 	loop         *loop                // loop contains tickers for the system event loop
 	done         chan bool            // indicate that the server is ending
+	closeOnce    sync.Once            // ensure Close is idempotent
 	Log          *slog.Logger         // minimal no-alloc logger
 	hooks        *Hooks               // hooks contains hooks for extra functionality such as auth and persistent storage
 	inlineClient *Client              // inlineClient is a special client used for inline subscriptions and inline Publish
@@ -397,6 +399,7 @@ func (s *Server) eventLoop() {
 
 // EstablishConnection establishes a new client when a listener accepts a new connection.
 func (s *Server) EstablishConnection(listener string, c net.Conn) error {
+	s.Listeners.ClientsWg.Add(1)
 	cl := s.NewClient(c, listener, "", false)
 	return s.attachClient(cl, listener)
 }
@@ -405,7 +408,6 @@ func (s *Server) EstablishConnection(listener string, c net.Conn) error {
 // to the server, performs session housekeeping, and reads incoming packets.
 func (s *Server) attachClient(cl *Client, listener string) error {
 	defer s.Listeners.ClientsWg.Done()
-	s.Listeners.ClientsWg.Add(1)
 
 	go cl.WriteLoop()
 	defer cl.Stop(nil)
@@ -416,15 +418,19 @@ func (s *Server) attachClient(cl *Client, listener string) error {
 	}
 
 	cl.ParseConnect(listener, pk)
-	if atomic.LoadInt64(&s.Info.ClientsConnected) >= s.Options.Capabilities.MaximumClients {
+
+	// Atomically reserve a slot before auth/session work to prevent TOCTOU races
+	// when multiple connections arrive simultaneously near the MaximumClients limit.
+	if newCount := atomic.AddInt64(&s.Info.ClientsConnected, 1); newCount > s.Options.Capabilities.MaximumClients {
+		atomic.AddInt64(&s.Info.ClientsConnected, -1)
 		if cl.Properties.ProtocolVersion < 5 {
 			s.SendConnack(cl, packets.ErrServerUnavailable, false, nil)
 		} else {
 			s.SendConnack(cl, packets.ErrServerBusy, false, nil)
 		}
-
 		return packets.ErrServerBusy
 	}
+	defer atomic.AddInt64(&s.Info.ClientsConnected, -1)
 
 	code := s.validateConnect(cl, pk) // [MQTT-3.1.4-1] [MQTT-3.1.4-2]
 	if code != packets.CodeSuccess {
@@ -448,9 +454,6 @@ func (s *Server) attachClient(cl *Client, listener string) error {
 
 		return packets.ErrBadUsernameOrPassword
 	}
-
-	atomic.AddInt64(&s.Info.ClientsConnected, 1)
-	defer atomic.AddInt64(&s.Info.ClientsConnected, -1)
 
 	s.hooks.OnSessionEstablish(cl, pk)
 
@@ -1493,14 +1496,16 @@ func (s *Server) publishSysTopics() {
 }
 
 // Close attempts to gracefully shut down the server, all listeners, clients, and stores.
+// Safe to call more than once.
 func (s *Server) Close() error {
-	close(s.done)
-	s.Log.Info("gracefully stopping server")
-	s.Listeners.CloseAll(s.closeListenerClients)
-	s.hooks.OnStopped()
-	s.hooks.Stop()
-
-	s.Log.Info("mochi mqtt server stopped")
+	s.closeOnce.Do(func() {
+		close(s.done)
+		s.Log.Info("gracefully stopping server")
+		s.Listeners.CloseAll(s.closeListenerClients)
+		s.hooks.OnStopped()
+		s.hooks.Stop()
+		s.Log.Info("mochi mqtt server stopped")
+	})
 	return nil
 }
 
