@@ -9,9 +9,9 @@ import (
 	"log/slog"
 	"strings"
 
-	mqtt "github.com/vogler75/mochi-mqtt-server/v2"
-	"github.com/vogler75/mochi-mqtt-server/v2/hooks/storage"
-	"github.com/vogler75/mochi-mqtt-server/v2/packets"
+	mqtt "github.com/mochi-mqtt/server/v2"
+	"github.com/mochi-mqtt/server/v2/hooks/storage"
+	"github.com/mochi-mqtt/server/v2/packets"
 )
 
 // Options contains configuration settings for the debug output.
