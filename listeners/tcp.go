@@ -58,13 +58,27 @@ func (l *TCP) Init(log *slog.Logger) error {
 	l.log = log
 
 	var err error
+	network := tcpNetwork(l.address)
 	if l.config.TLSConfig != nil {
-		l.listen, err = tls.Listen("tcp", l.address, l.config.TLSConfig)
+		l.listen, err = tls.Listen(network, l.address, l.config.TLSConfig)
 	} else {
-		l.listen, err = net.Listen("tcp", l.address)
+		l.listen, err = net.Listen(network, l.address)
 	}
 
 	return err
+}
+
+// tcpNetwork returns "tcp4" for IPv4 addresses to avoid slow dual-stack socket
+// initialization on Windows. Falls back to "tcp" for IPv6 or unresolvable addresses.
+func tcpNetwork(address string) string {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return "tcp"
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.To4() != nil {
+		return "tcp4"
+	}
+	return "tcp"
 }
 
 // Serve starts waiting for new TCP connections, and calls the establish
