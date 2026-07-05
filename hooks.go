@@ -55,6 +55,7 @@ const (
 	StoredInflightMessages
 	StoredRetainedMessages
 	StoredSysInfo
+	OnSelectRetainedMessages
 )
 
 var (
@@ -114,6 +115,7 @@ type Hook interface {
 	StoredInflightMessages() ([]storage.Message, error)
 	StoredRetainedMessages() ([]storage.Message, error)
 	StoredSysInfo() (storage.SystemInfo, error)
+	OnSelectRetainedMessages(filter string) ([]packets.Packet, error)
 }
 
 // HookOptions contains values which are inherited from the server on initialisation.
@@ -630,6 +632,25 @@ func (h *Hooks) StoredRetainedMessages() (v []storage.Message, err error) {
 	return
 }
 
+// OnSelectRetainedMessages returns matching retained messages from a store.
+func (h *Hooks) OnSelectRetainedMessages(filter string) (v []packets.Packet, err error) {
+	for _, hook := range h.GetAll() {
+		if hook.Provides(OnSelectRetainedMessages) {
+			v, err = hook.OnSelectRetainedMessages(filter)
+			if err != nil {
+				h.Log.Error("failed to select retained messages", "error", err, "hook", hook.ID())
+				return v, err
+			}
+
+			if len(v) > 0 {
+				return v, nil
+			}
+		}
+	}
+
+	return
+}
+
 // StoredSysInfo returns a set of system info values.
 func (h *Hooks) StoredSysInfo() (v storage.SystemInfo, err error) {
 	for _, hook := range h.GetAll() {
@@ -859,5 +880,10 @@ func (h *HookBase) StoredRetainedMessages() (v []storage.Message, err error) {
 
 // StoredSysInfo returns a set of system info values.
 func (h *HookBase) StoredSysInfo() (v storage.SystemInfo, err error) {
+	return
+}
+
+// OnSelectRetainedMessages returns matching retained messages from a store.
+func (h *HookBase) OnSelectRetainedMessages(filter string) (v []packets.Packet, err error) {
 	return
 }

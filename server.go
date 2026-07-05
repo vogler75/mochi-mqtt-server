@@ -978,10 +978,20 @@ func (s *Server) retainMessage(cl *Client, pk packets.Packet) {
 		return
 	}
 
-	out := pk.Copy(false)
-	r := s.Topics.RetainMessage(out)
-	s.hooks.OnRetainMessage(cl, pk, r)
-	atomic.StoreInt64(&s.Info.Retained, int64(s.Topics.Retained.Len()))
+	if s.hooks.Provides(OnSelectRetainedMessages) {
+		var r int64
+		if len(pk.Payload) == 0 {
+			r = -1
+		} else {
+			r = 1
+		}
+		s.hooks.OnRetainMessage(cl, pk, r)
+	} else {
+		out := pk.Copy(false)
+		r := s.Topics.RetainMessage(out)
+		s.hooks.OnRetainMessage(cl, pk, r)
+		atomic.StoreInt64(&s.Info.Retained, int64(s.Topics.Retained.Len()))
+	}
 }
 
 // publishToSubscribers publishes a publish packet to all subscribers with matching topic filters.
@@ -1126,7 +1136,19 @@ func (s *Server) publishRetainedToClient(cl *Client, sub packets.Subscription, e
 	}
 
 	sub.FwdRetainedFlag = true
-	for _, pkv := range s.Topics.Messages(sub.Filter) { // [MQTT-3.8.4-4]
+	var pks []packets.Packet
+	var err error
+	if s.hooks.Provides(OnSelectRetainedMessages) {
+		pks, err = s.hooks.OnSelectRetainedMessages(sub.Filter)
+		if err != nil {
+			s.Log.Error("failed to get retained messages from hook", "error", err, "filter", sub.Filter)
+			return
+		}
+	} else {
+		pks = s.Topics.Messages(sub.Filter)
+	}
+
+	for _, pkv := range pks { // [MQTT-3.8.4-4]
 		_, err := s.publishToClient(cl, sub, pkv)
 		if err != nil {
 			s.Log.Debug("failed to publish retained message", "error", err, "client", cl.ID, "listener", cl.Net.Listener, "packet", pkv)
